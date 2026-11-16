@@ -1,9 +1,9 @@
-FROM ubuntu:18.04
+FROM docker.io/library/ubuntu:18.04
 
 # TODO remove sudo for user "magma" to avoid unwanted priv escalation from
 # other attack vectors.
 
-RUN apt-get update && apt-get install -y sudo
+RUN apt-get update && apt-get install -y sudo util-linux
 
 ## Magma directory hierarchy
 # magma_root is relative to the docker-build's working directory
@@ -67,10 +67,10 @@ RUN ${TARGET}/fetch.sh
 RUN ${MAGMA}/apply_patches.sh
 
 ## Configuration parameters
-ARG isan
-ARG harden
-ARG canaries
-ARG fixes
+ARG isan=
+ARG harden=
+ARG canaries=
+ARG fixes=
 
 ARG ISAN_FLAG=${isan:+-DMAGMA_FATAL_CANARIES}
 ARG HARDEN_FLAG=${harden:+-DMAGMA_HARDEN_CANARIES}
