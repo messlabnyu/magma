@@ -15,6 +15,8 @@ def campaign_rows(path, bugs):
     if (path / 'fuzzer-exit-code').read_text().strip() != '124':
         raise ValueError(f'{path}: campaign did not exhaust its budget')
     end = int((path / 'elapsed-seconds').read_text())
+    cutoff_file = path / 'observation-end-seconds'
+    observed = int(cutoff_file.read_text()) if cutoff_file.exists() else end
     config = {}
     for line in (path / 'campaign.txt').read_text().splitlines():
         if '=' in line:
@@ -23,8 +25,10 @@ def campaign_rows(path, bugs):
     first = {}
     samples = sorted((int(p.name), p) for p in (path / 'monitor').iterdir()
                      if p.name.isdigit())
-    if not samples or samples[-1][0] != end:
+    if not samples or samples[-1][0] != observed or not 0 <= observed <= end:
         raise ValueError(f'{path}: missing final monitor sample')
+    if end - observed > int(config.get('poll', '5')) + 2:
+        raise ValueError(f'{path}: monitor observations ended too early')
     for timestamp, sample in samples:
         with sample.open(newline='') as stream:
             data = list(csv.DictReader(stream))
@@ -35,7 +39,7 @@ def campaign_rows(path, bugs):
                 first.setdefault(bug, timestamp)
     for bug in bugs:
         yield [str(path), config['target'], config['program'], config['fuzzer'],
-               bug, first.get(bug, end), int(bug in first), end]
+               bug, first.get(bug, observed), int(bug in first), end, observed]
 
 
 def main():
@@ -57,7 +61,8 @@ def main():
     with args.output.open('x', newline='') as stream:
         writer = csv.writer(stream)
         writer.writerow(['campaign', 'target', 'program', 'fuzzer', 'bug',
-                         'time_seconds', 'triggered', 'observed_run_seconds'])
+                         'time_seconds', 'triggered', 'observed_run_seconds',
+                         'observation_end_seconds'])
         writer.writerows(rows)
 
 

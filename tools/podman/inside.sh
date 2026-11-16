@@ -20,6 +20,10 @@ taskset -pc "$8" $$
 taskset -pc $$ > "$SHARED/cpu-affinity.txt"
 cd "$SHARED"
 mkdir "$MONITOR"
+# Initialize storage synchronously. magma_init() permanently disables canaries
+# in a process if its first open fails; a background-only monitor can race it.
+"$OUT/monitor" --dump row > "$MONITOR/initial.tmp"
+mv "$MONITOR/initial.tmp" "$MONITOR/0"
 SECONDS=0
 poll_monitor() {
     while :; do
@@ -55,6 +59,25 @@ printf '%s\n' "$elapsed" > "$SHARED/elapsed-seconds"
 }
 cleanup
 trap - EXIT
-"$OUT/monitor" --dump row > "$MONITOR/$elapsed"
+# A read consumes the available monitor buffer. Once the fuzzer has stopped,
+# another read can return 1 simply because the poller already consumed it.
+# Never truncate a valid snapshot while attempting that final read.
+if [[ ! -s $MONITOR/$elapsed ]]; then
+    if "$OUT/monitor" --dump row > "$MONITOR/final.tmp"; then
+        mv "$MONITOR/final.tmp" "$MONITOR/$elapsed"
+    else
+        rm -f "$MONITOR/final.tmp"
+        echo 'No fresh final monitor buffer; retaining the last recorded observation.'
+    fi
+fi
+observed=$(find "$MONITOR" -maxdepth 1 -type f -name '[0-9]*' -size +0c \
+    -printf '%f\n' | sort -n | tail -n 1)
+[[ $observed =~ ^[0-9]+$ ]] || { echo 'No monitor observations recorded' >&2; exit 1; }
+(( observed <= elapsed && elapsed - observed <= POLL + 2 )) || {
+    echo "Last monitor observation ($observed s) is too far from run end ($elapsed s)." >&2
+    exit 1
+}
+printf '%s\n' "$observed" > "$SHARED/observation-end-seconds"
 [[ -s $SHARED/canaries.raw ]] || { echo 'No canary storage' >&2; exit 1; }
+echo "Last canary observation: $observed seconds; campaign end: $elapsed seconds."
 echo 'Campaign completed its time budget. Inspect fuzzer logs for actual progress.'
