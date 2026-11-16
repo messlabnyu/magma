@@ -59,12 +59,20 @@ find "$repo/targets/$target/patches/bugs" -name '*.patch' -printf '%f\n' | \
     date -u +%FT%TZ
 } > "$result/campaign.txt"
 name="magma-$(id -u)-$$-$(date +%s)"
+afl_env=()
+if [[ ${AFL_SKIP_CRASHES:-} == 1 ]]; then
+    afl_env=(--env AFL_SKIP_CRASHES=1)
+    printf 'afl_skip_crashes=1\n' >> "$result/campaign.txt"
+else
+    printf 'afl_skip_crashes=unset\n' >> "$result/campaign.txt"
+fi
 cleanup() { podman rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 set +e
 podman run --name "$name" --userns=keep-id:uid=1000,gid=1000 --user 1000:1000 \
+    "${afl_env[@]}" \
     --network=none --ipc=private --memory "${MEMORY:-4g}" \
     --memory-swap "${MEMORY:-4g}" --shm-size=256m \
     --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \

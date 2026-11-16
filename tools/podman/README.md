@@ -20,7 +20,11 @@ CPUS=0 MEMORY=4g TIMEOUT=2m bash tools/podman/run.sh \
   targets/libpng/corpus/libpng_read_fuzzer podman-results/png-mini-01
 ```
 
-Every run needs a **new result directory**. To test all four images sequentially:
+Every run needs a **new result directory**.
+
+If AFL aborts because an initial seed crashes, `env AFL_SKIP_CRASHES=1` before the run command opts into skipping those startup seeds, matching FuzzBench's AFL setup. This is recorded in `campaign.txt` and is off by default. It changes the effective starting corpus; use it for operational pilots and define a common seed policy before final comparisons. In libxml2, seed `781333.xml` crashed with and without the 100 MiB target cap; the unrestricted replay recorded XML001 triggered.
+
+To test all four images sequentially:
 
 ```bash
 FUZZER=afl TIMEOUT=2m bash tools/podman/smoke.sh podman-results/four-mini-01
